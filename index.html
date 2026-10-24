@@ -116,6 +116,14 @@
     .result-score { margin: 12px 0; color: var(--accent); font-size: 3rem; font-weight: 850; letter-spacing: -.06em; }
     .result-score span { font-size: 1.2rem; color: var(--muted); letter-spacing: 0; }
     .result-copy { margin: 0 auto 26px; max-width: 32em; color: var(--muted); }
+    .mission-report { margin: 0 0 24px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--accent-soft); text-align: left; overflow-wrap: anywhere; }
+    .mission-report h3 { margin: 0 0 12px; }
+    .mission-report dl { margin: 0; }
+    .mission-report dt { margin-top: 10px; color: var(--muted); font-size: .85rem; }
+    .mission-report dd { margin: 0; font-weight: 700; }
+    .mission-report .primary { margin-top: 18px; }
+    .copy-status { margin: 10px 0 0; font-size: .9rem; }
+    .copy-fallback { display: block; width: 100%; margin-top: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
     footer { margin-top: 20px; color: var(--muted); text-align: center; font-size: .75rem; letter-spacing: .04em; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     @keyframes shake {
@@ -184,6 +192,20 @@
         <h2 id="result-title" tabindex="-1"></h2>
         <p class="result-score" id="result-score"></p>
         <p class="result-copy" id="result-copy"></p>
+        <section class="mission-report" aria-labelledby="report-title">
+          <h3 id="report-title">미션 리포트</h3>
+          <dl>
+            <dt>최종 점수 · 정답률</dt>
+            <dd id="report-score"></dd>
+            <dt>등급 칭호</dt>
+            <dd id="report-rank"></dd>
+            <dt>가장 오래 걸린 문항</dt>
+            <dd id="report-slowest"></dd>
+          </dl>
+          <button id="copy-report" class="primary" type="button">미션 리포트 복사</button>
+          <p id="copy-status" class="copy-status" role="status" aria-atomic="true"></p>
+          <textarea id="copy-fallback" class="copy-fallback" rows="6" aria-label="직접 복사할 미션 리포트" readonly hidden></textarea>
+        </section>
         <button id="restart" class="primary" type="button">다시 탐사하기 ↗</button>
       </section>
       <noscript><p>퀴즈를 진행하려면 브라우저의 JavaScript를 켜 주세요. 인터넷 연결은 필요하지 않습니다.</p></noscript>
@@ -275,6 +297,12 @@
       resultEmoji: document.getElementById("result-emoji"),
       resultScore: document.getElementById("result-score"),
       resultCopy: document.getElementById("result-copy"),
+      reportScore: document.getElementById("report-score"),
+      reportRank: document.getElementById("report-rank"),
+      reportSlowest: document.getElementById("report-slowest"),
+      copyReport: document.getElementById("copy-report"),
+      copyStatus: document.getElementById("copy-status"),
+      copyFallback: document.getElementById("copy-fallback"),
       restart: document.getElementById("restart")
     };
 
@@ -292,6 +320,9 @@
     let score = 0;
     let answered = false;
     let scoreAnimation = null;
+    let questionStarted = 0;
+    let answerTimes = [];
+    let missionReport = "";
 
     function updateProgress(completed) {
       ui.progress.value = completed;
@@ -332,11 +363,13 @@
       });
 
       if (moveFocus) ui.question.focus();
+      questionStarted = performance.now();
     }
 
     function selectAnswer(selected) {
       if (answered) return;
       answered = true;
+      answerTimes[current] = performance.now() - questionStarted;
       const item = order[current];
       const correct = selected === item.correct;
       if (correct) score += 10;
@@ -397,8 +430,46 @@
         scoreAnimation = requestAnimationFrame(animateScore);
       }
       ui.resultCopy.textContent = `10문항 중 ${score / 10}문항 정답. ${reaction.copy}`;
+      const accuracy = Math.round((score / 10) / questions.length * 100);
+      const slowest = answerTimes.reduce((longest, time, index) =>
+        time > answerTimes[longest] ? index : longest, 0);
+      const slowestText = `${slowest + 1}번 · ${order[slowest].question} (${(answerTimes[slowest] / 1000).toFixed(1)}초)`;
+      ui.reportScore.textContent = `${score} / 100점 · ${accuracy}%`;
+      ui.reportRank.textContent = reaction.title;
+      ui.reportSlowest.textContent = slowestText;
+      missionReport = `COSMIC QUEST · 미션 리포트\n점수 ${score}/100점 · 정답률 ${accuracy}% (${score / 10}/${questions.length}문항)\n등급: ${reaction.title}\n가장 오래 걸린 문항: ${slowestText}`;
       ui.resultTitle.focus();
     }
+
+    ui.copyReport.addEventListener("click", async () => {
+      if (!missionReport || ui.copyReport.getAttribute("aria-disabled") === "true") return;
+      const report = missionReport;
+      ui.copyReport.setAttribute("aria-disabled", "true");
+      ui.copyStatus.textContent = "리포트를 복사하고 있어요.";
+      try {
+        await navigator.clipboard.writeText(report);
+        if (missionReport === report) ui.copyStatus.textContent = "미션 리포트를 복사했어요!";
+      } catch {
+        if (missionReport !== report) return;
+        ui.copyFallback.value = report;
+        ui.copyFallback.hidden = false;
+        ui.copyFallback.focus();
+        ui.copyFallback.select();
+        let copied = false;
+        try {
+          copied = document.execCommand("copy");
+        } catch {}
+        if (copied) {
+          ui.copyFallback.hidden = true;
+          ui.copyReport.focus();
+          ui.copyStatus.textContent = "미션 리포트를 복사했어요!";
+        } else {
+          ui.copyStatus.textContent = "자동 복사를 사용할 수 없어요. 선택된 리포트를 Ctrl+C 또는 ⌘C로 복사해 주세요.";
+        }
+      } finally {
+        if (missionReport === report) ui.copyReport.removeAttribute("aria-disabled");
+      }
+    });
 
     ui.next.addEventListener("click", () => {
       if (!answered) return;
@@ -416,6 +487,12 @@
       current = 0;
       score = 0;
       answered = false;
+      answerTimes = [];
+      missionReport = "";
+      ui.copyReport.removeAttribute("aria-disabled");
+      ui.copyStatus.textContent = "";
+      ui.copyFallback.hidden = true;
+      ui.copyFallback.value = "";
       order = shuffle(questions);
       ui.result.hidden = true;
       ui.quiz.hidden = false;
