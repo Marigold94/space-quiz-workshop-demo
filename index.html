@@ -278,6 +278,16 @@
       restart: document.getElementById("restart")
     };
 
+    function shuffle(list) {
+      const copy = [...list];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    let order = shuffle(questions);
     let current = 0;
     let score = 0;
     let answered = false;
@@ -292,7 +302,7 @@
 
     function renderQuestion(moveFocus = true) {
       answered = false;
-      const item = questions[current];
+      const item = order[current];
       ui.number.textContent = `QUESTION ${String(current + 1).padStart(2, "0")} / ${questions.length}`;
       ui.question.textContent = item.question;
       ui.question.setAttribute("aria-label", `${current + 1}번 문제. ${item.question}`);
@@ -327,7 +337,7 @@
     function selectAnswer(selected) {
       if (answered) return;
       answered = true;
-      const item = questions[current];
+      const item = order[current];
       const correct = selected === item.correct;
       if (correct) score += 10;
 
@@ -405,6 +415,8 @@
       scoreAnimation = null;
       current = 0;
       score = 0;
+      answered = false;
+      order = shuffle(questions);
       ui.result.hidden = true;
       ui.quiz.hidden = false;
       ui.announcer.textContent = "새 탐사를 시작합니다. 점수 0점.";
